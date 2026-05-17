@@ -1,0 +1,32 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# install.sh artifacts
+.pivx/
+.pivx-data/
+.demo.log
+.demo.pid
+
+# editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# AI / agent tooling
+CLAUDE.md
+AGENT.md
+.claude/
+.claudeignore
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.windsurf/
+.github/copilot/
+GEMINI.md
+.gemini/

@@ -1,0 +1,13 @@
+# `files` in package.json is authoritative for what we publish.
+# This file exists only so leftover dotfiles and dev artifacts never sneak in.
+.pivx/
+.pivx-data/
+.env*
+.demo.log
+.demo.pid
+demo/
+test/
+install.sh
+node_modules/
+src/
+tsconfig.json

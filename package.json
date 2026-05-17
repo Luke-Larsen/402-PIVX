@@ -1,0 +1,64 @@
+{
+  "name": "pivx402payment",
+  "version": "0.1.0",
+  "description": "HTTP 402 Payment Required middleware for PIVX — pay-per-request APIs with transparent or shielded PIV.",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "demo:server": "tsx demo/server.ts",
+    "demo:cat": "tsx demo/cat.ts",
+    "demo:client": "tsx demo/client.ts",
+    "demo:pay": "tsx demo/pay-cli.ts",
+    "test": "node --test --import=tsx test/*.test.ts"
+  },
+  "keywords": [
+    "pivx",
+    "x402",
+    "http-402",
+    "payment-required",
+    "micropayments",
+    "express",
+    "middleware",
+    "cryptocurrency",
+    "ai-agents",
+    "agentic-payments",
+    "shield",
+    "sapling"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Luke-Larsen/402-PIVX.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Luke-Larsen/402-PIVX/issues"
+  },
+  "homepage": "https://github.com/Luke-Larsen/402-PIVX#readme",
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
