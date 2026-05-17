@@ -1,0 +1,21 @@
+node_modules
+dist
+.git
+.gitignore
+.npmignore
+.env
+.env.*
+!.env.example
+.pivx
+.pivx-data
+.demo.log
+.demo.pid
+.idea
+.vscode
+.DS_Store
+
+# AI / agent tooling
+CLAUDE.md
+.claude
+.cursor
+.aider*

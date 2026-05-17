@@ -1,0 +1,18 @@
+services:
+  pivx402-cat:
+    build: .
+    container_name: pivx402-cat
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Defaults; .env overrides any of these.
+      PIVX_NETWORK: ${PIVX_NETWORK:-mainnet}
+      PIVX_EXPLORER_URL: ${PIVX_EXPLORER_URL:-https://blockbook.pivx.org}
+      PRICE_PIV: ${PRICE_PIV:-0.0001}
+      MIN_CONFIRMATIONS: ${MIN_CONFIRMATIONS:-1}
+      SCHEME: ${SCHEME:-pivx-transparent}
+      PORT: "4403"
+    ports:
+      # Bind to localhost; apache2 on the host reverse-proxies to here.
+      - "127.0.0.1:${HOST_PORT:-4403}:4403"
