@@ -19,7 +19,7 @@ COPY demo ./demo
 # Default to mainnet + the public PIVX BlockBook explorer. Override via env.
 ENV NODE_ENV=production
 ENV PIVX_NETWORK=mainnet
-ENV PIVX_EXPLORER_URL=https://blockbook.pivx.org
+ENV PIVX_EXPLORER_URL=https://explorer.duddino.com
 ENV PRICE_PIV=0.0001
 ENV MIN_CONFIRMATIONS=1
 ENV SCHEME=pivx-transparent

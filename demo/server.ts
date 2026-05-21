@@ -29,7 +29,7 @@ function makeBackend(): PivxBackend {
       password: process.env.PIVX_RPC_PASSWORD,
     });
   }
-  const explorer = process.env.PIVX_EXPLORER_URL ?? "https://blockbook.pivx.org";
+  const explorer = process.env.PIVX_EXPLORER_URL ?? "https://explorer.duddino.com";
   return new ExplorerBackend({ baseUrl: explorer });
 }
 

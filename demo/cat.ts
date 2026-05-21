@@ -45,7 +45,7 @@ function makeBackend(): PivxBackend {
       "pivx-shield requires PIVX_RPC_URL (an explorer cannot decrypt shielded outputs)",
     );
   }
-  const explorer = process.env.PIVX_EXPLORER_URL ?? "https://blockbook.pivx.org";
+  const explorer = process.env.PIVX_EXPLORER_URL ?? "https://explorer.duddino.com";
   return new ExplorerBackend({ baseUrl: explorer });
 }
 

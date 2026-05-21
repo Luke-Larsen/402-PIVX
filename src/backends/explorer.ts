@@ -4,7 +4,7 @@ import type { TxInfo, TxOutput } from "../types";
 export interface ExplorerConfig {
   /**
    * Base URL of a BlockBook-compatible PIVX explorer.
-   * Example: https://blockbook.pivx.org (no trailing slash).
+   * Example: https://explorer.duddino.com (no trailing slash).
    */
   baseUrl: string;
   fetchImpl?: typeof fetch;
