@@ -1,17 +1,16 @@
-# AGENTS.md — pivx402payment for AI agents
+# AGENTS.md: pivx402payment for AI agents
 
-This file is for **AI agents** (Claude, GPT-class models, autonomous task
-runners, tool-using LLM apps) and the engineers who build with them.
+For **AI agents** (Claude, GPT-class models, autonomous task runners,
+tool-using LLM apps) and the engineers wiring them up.
 
-There are two roles to consider:
+Two roles:
 
 1. **Consumer**: an agent that *pays* a 402-gated PIVX endpoint to use it.
-2. **Builder**: an agent (or a human + agent) that *builds* such an endpoint
-   using this library.
+2. **Builder**: an agent (or a human plus agent) that *builds* such an
+   endpoint using this library.
 
-The library is designed so both paths are short, predictable, and
-deterministic — no UI, no out-of-band auth, no per-customer accounts. The
-protocol is the account.
+Both paths are short and predictable. There's no UI, no out-of-band auth,
+no per-customer accounts. The protocol is the account.
 
 ---
 
@@ -24,11 +23,11 @@ protocol is the account.
 - **Stable error codes.** Every verification failure returns a known
   `reason` string (see README), so an agent can react programmatically:
   "wait for confirmations", "top up wallet", "retry with bigger amount".
-- **One handshake.** No webhooks, no callbacks, no polling — request, pay,
+- **One handshake.** No webhooks, no callbacks, no polling: request, pay,
   retry, done.
-- **Shielded by default available.** For agents that need to spend without
+- **Shielded payments available.** For agents that need to spend without
   revealing amounts on-chain (price-discovery probes, competitive ops),
-  switch the scheme to `pivx-shield` — same envelope, same proof shape.
+  switch the scheme to `pivx-shield`. Same envelope, same proof shape.
 
 ---
 
@@ -72,8 +71,8 @@ Agents typically reach the chain through one of:
 - A **custodial signing service** (your wallet provider's HTTP API).
 - A **hosted PIVX node** accessed over HTTPS.
 
-The library doesn't care which — `Payer` is intentionally a single async
-function: "given this requirement, return a broadcast txid."
+The library doesn't care which. `Payer` is intentionally one async
+function: given a requirement, return a broadcast txid.
 
 ### Failure modes and what an agent should do
 
@@ -148,12 +147,13 @@ This is the workflow the model should follow when a user asks for a
    - `minConfirmations: 6` for anything you'd be sad to lose to a re-org.
 4. **What price?**
    - Static for a single SKU: `price: { amount: "0.001", payTo: "...", description: "..." }`.
-   - Per-request (dynamic): pass a function. Async is fine — useful when the
-     price depends on a database row, the request body, or a real-time rate.
+   - Per-request (dynamic): pass a function. Async is fine, and useful
+     when the price depends on a database row, the request body, or a
+     real-time rate.
 5. **What nonce store?**
    - Single-process / dev: omit, defaults to in-memory.
    - Production: implement `NonceStore` against Redis/Postgres. Just two
-     async methods. Don't skip this — replay protection lives here.
+     async methods. Don't skip this. Replay protection lives here.
 
 ### Template the agent should generate
 
@@ -201,27 +201,27 @@ app.listen(Number(process.env.PORT ?? 4403));
   any payment to `payTo` would unlock the resource for everyone.
 - **Do not reuse a single `NonceStore` instance across unrelated routes
   without thinking about it.** Different routes can share one, but each
-  successful payment burns its nonce — that's the whole point. The same
-  txid + nonce cannot satisfy two routes.
+  successful payment burns its nonce. That's the whole point: the same
+  txid plus nonce cannot satisfy two routes.
 - **Do not commit RPC credentials or `payTo` private keys.** `payTo` is a
-  public address — that's fine in code or config. The private key for it
-  belongs in the `pivxd` wallet only.
+  public address, which is fine in code or config. The private key for
+  it belongs in the `pivxd` wallet only.
 - **Do not catch and silently 200 on verification failures.** The middleware
   intentionally re-issues a fresh nonce on every failure; trust it.
 
 ### Verifying your build
 
-1. Run `npm test` — covers all 9 verification reasons + the client helper.
+1. Run `npm test`. Covers all 9 verification reasons plus the client helper.
 2. Run `./install.sh` and pay the cat demo end-to-end:
    ```bash
    set -a; source .env.local; set +a
    npx tsx demo/pay-cli.ts -v --out /tmp/cat.svg http://127.0.0.1:4403/cat
    ```
    This proves the full loop works on regtest.
-3. Hit your endpoint without payment — confirm 402 with a valid
+3. Hit your endpoint without payment. Confirm 402 with a valid
    `X-Payment-Required` header.
-4. Hit it twice with the same proof — second call must return 402 with
-   `error: nonce_replayed`.
+4. Hit it twice with the same proof. The second call must return 402
+   with `error: nonce_replayed`.
 
 ---
 

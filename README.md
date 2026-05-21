@@ -1,45 +1,42 @@
 # pivx402payment
 
-**HTTP 402 Payment Required middleware for PIVX.**
-Gate any Express route behind a real PIV payment — transparent or shielded —
-in a few lines of code. Designed so humans, scripts, and AI agents all pay
-the same way.
+**HTTP 402 Payment Required middleware for PIVX.** Gate any Express route
+behind a real PIV payment (transparent or shielded) in a few lines of
+code. Humans, scripts, and AI agents all pay the same way: there's no
+account system.
 
 Live demo: **https://pivx402.computingcache.com/cat** (one SVG cat per 0.0001 PIV)
 
-There are two roles you can play with this library. The README is split that
-way; jump to whichever applies:
+Pick the section that matches what you're doing:
 
-- **[A. I want to run a paywall](#a-run-a-paywall)** — gate one or more HTTP
-  endpoints so visitors must pay PIVX to access them.
-- **[B. I want to build a bot that pays paywalls](#b-build-a-bot-that-pays-paywalls)** —
-  call somebody else's 402 endpoint programmatically, sign+broadcast the
-  payment, retry with the proof.
+- **[A. Run a paywall](#a-run-a-paywall)** if you want to gate one or more
+  of your own HTTP endpoints behind a PIVX payment.
+- **[B. Build a bot that pays paywalls](#b-build-a-bot-that-pays-paywalls)**
+  if you want to call somebody else's 402 endpoint, sign and broadcast the
+  payment, and retry with the proof.
 
-Both roles share the same protocol envelope, error codes, and verification
-rules. See the **[API reference](#api-reference)** and
-**[Protocol cheat sheet](#protocol-cheat-sheet)** at the bottom when you need
-the full surface, and **[Gotchas](#gotchas-we-actually-hit)** for the things
-that bit us in production.
+Both halves share the same protocol envelope and error codes. The
+[API reference](#api-reference) and [Protocol cheat sheet](#protocol-cheat-sheet)
+are at the bottom. [Gotchas](#gotchas-we-actually-hit) lists the things
+that cost us hours getting the live demo running.
 
 ---
 
 ## Why HTTP 402?
 
 `402 Payment Required` is the long-reserved HTTP status code for "this
-resource costs money." x402 is the emerging convention for actually using
-it. This package implements the x402 handshake on **PIVX**, with first-class
-support for both:
+resource costs money." x402 is the convention for actually using it. This
+package implements the x402 handshake on **PIVX**, with two schemes:
 
-- **`pivx-transparent`** — normal `D...` addresses; the nonce travels as an
-  `OP_RETURN` output. Verifiable by any block explorer.
-- **`pivx-shield`** — Sapling `ps1...` addresses; the nonce travels as the
+- **`pivx-transparent`**: normal `D...` addresses; the nonce travels as an
+  `OP_RETURN` output. Any block explorer can verify it.
+- **`pivx-shield`**: Sapling `ps1...` addresses; the nonce travels as the
   shielded **memo**. Amount, sender, recipient, and memo are all encrypted
   on-chain. Requires a `pivxd` node holding the receiver's viewing key.
 
-The same middleware, the same client code, the same proof envelope — the
-backend switches between transparent verification and shielded decryption
-under the hood.
+The middleware, the client code, and the proof envelope are identical for
+both. The backend switches between transparent verification and shielded
+decryption under the hood.
 
 ---
 
@@ -55,10 +52,10 @@ response is served.
 | `ExplorerBackend` | An HTTPS URL to a BlockBook-compatible PIVX explorer | Easiest. No node to maintain. Transparent-scheme only. Trusts the explorer. |
 | `NodeRpcBackend`  | A locally-reachable `pivxd` JSON-RPC + creds       | Full control. Required for **shielded** payments. ~20 GB disk, real RAM. |
 
-Public PIVX BlockBook explorers come and go — `blockbook.pivx.org`
-disappeared on us in May 2026. **`https://explorer.duddino.com` is the
-current default in this package.** If it ever goes down, you can point at
-any other BlockBook-compatible PIVX mirror or run your own.
+Public PIVX BlockBook explorers come and go. The current default is
+**`https://explorer.duddino.com`**. Override `PIVX_EXPLORER_URL` if that
+one goes down and point at any other BlockBook-compatible PIVX mirror, or
+run your own.
 
 ## 2. Install
 
@@ -91,7 +88,7 @@ app.get(
   }),
   (req, res) => {
     // req.pivx402 contains { txid, nonce, amount, payTo, scheme, network }
-    // — useful for receipts, audit logs, download tokens, abuse-rate-limiting.
+    // for receipts, audit logs, download tokens, rate-limiting, etc.
     res.json({ ok: true, paidWith: req.pivx402!.txid });
   },
 );
@@ -99,12 +96,12 @@ app.get(
 app.listen(4403);
 ```
 
-That's the whole paywall. The first `GET /api/paid-thing` returns **`402
-Payment Required`** with a machine-readable `X-Payment-Required` header.
-The caller pays the quoted PIV to your address (embedding a server-issued
-nonce as an `OP_RETURN`), then retries with `X-Payment: <proof>`. The
-middleware verifies the on-chain transaction through your backend and runs
-the handler.
+That's the whole paywall. The first `GET /api/paid-thing` returns `402
+Payment Required` with a machine-readable `X-Payment-Required` header.
+The caller pays the quoted PIV to your address, embedding a
+server-issued nonce as an `OP_RETURN`, then retries with `X-Payment:
+<proof>`. The middleware verifies the on-chain transaction through your
+backend and runs the handler.
 
 ## 4. Pick price + confirmations sensibly
 
@@ -167,8 +164,9 @@ A `.env.example` is included with the env vars demo/cat.ts reads.
 
 # B. Build a bot that pays paywalls
 
-You want to programmatically pay 402-gated endpoints — an AI agent,
-scraper, batch process, anything.
+You want to programmatically pay 402-gated endpoints from an AI agent,
+scraper, batch process, or anything else that runs without a user
+sitting in front of it.
 
 ## 1. Install
 
@@ -176,17 +174,18 @@ scraper, batch process, anything.
 npm install pivx402payment
 ```
 
-You also need **a way to broadcast PIVX transactions** — a wallet your bot
-can drive. Options, easiest first:
+You'll also need a way to broadcast PIVX transactions. Options, easiest
+first:
 
-| Signer                            | What you'll need                                       |
-| --------------------------------- | ------------------------------------------------------ |
-| **Local `pivxd` + JSON-RPC**      | The full PIVX daemon, ~20 GB disk, RPC creds. Most reliable. |
+| Signer                             | What you'll need                                       |
+| ---------------------------------- | ------------------------------------------------------ |
+| **Local `pivxd` + JSON-RPC**       | The full PIVX daemon, ~20 GB disk, RPC creds. Most reliable. |
 | **`pivx-cli` shell from your bot** | Just the binaries; convenient if you already run `pivxd` for other reasons. |
-| **A custodial/hosted wallet API** | Whatever HTTPS API your wallet provider exposes.       |
+| **A custodial/hosted wallet API**  | Whatever HTTPS API your wallet provider exposes.       |
 
-The library doesn't care which — you give it a `payer` function whose only
-job is "given this payment requirement, return a broadcast txid."
+The library doesn't care which one you use. You give it a `payer`
+function whose only job is: given a payment requirement, return a
+broadcast txid.
 
 ## 2. The 5-line version
 
@@ -236,7 +235,7 @@ export const pivxdPayer: Payer = async (req) => {
                   JSON.stringify({ [req.payTo]: Number(req.maxAmountRequired) }));
 
   // 2. Let the wallet add inputs + change. feeRate 0.0005 PIV/kB leaves headroom
-  //    for the OP_RETURN we're about to splice in — fundrawtransaction can't see it yet.
+  //    for the OP_RETURN we're about to splice in (fundrawtransaction can't see it yet).
   const funded = JSON.parse(cli("fundrawtransaction", raw,
                                 JSON.stringify({ feeRate: 0.0005 }))).hex;
 
@@ -321,10 +320,10 @@ See [AGENTS.md](./AGENTS.md) for more on the agent integration story
 ```ts
 import { NodeRpcBackend, ExplorerBackend } from "pivx402payment";
 
-// pivxd JSON-RPC — required for shielded verification.
+// pivxd JSON-RPC (required for shielded verification).
 new NodeRpcBackend({ url: "http://127.0.0.1:51473", username: "u", password: "p" });
 
-// BlockBook-compatible explorer — transparent only.
+// BlockBook-compatible explorer (transparent only).
 new ExplorerBackend({ baseUrl: "https://explorer.duddino.com" });
 ```
 
@@ -411,14 +410,14 @@ In rough order of "how long this cost us":
      - Run from a shell: `pivx-cli createrawtransaction "[]" '{"...":0.0001}'`
        (shell single-quotes preserve the inner doubles).
      - In the GUI, escape the inner quotes: `createrawtransaction []
-       {\"D...\":0.0001}` — works in current PIVX Core builds.
+       {\"D...\":0.0001}`. Works in current PIVX Core builds.
 
 4. **The "Latest" snapshot URL on `snapshot.rockdev.org` can rotate to a
-   new file mid-download** — if you use `curl -C -` to resume, you'll get
-   a Frankenstein file (bytes from snapshot A + B) and `gzip -t` fails
-   with `invalid compressed data--format violated`. Always pass
-   `--header "If-Range: <ETag>"` and prefer the `*Backup*.tgz` URL, which
-   is stable.
+   new file mid-download.** If you use `curl -C -` to resume, you'll get
+   a Frankenstein file (bytes from snapshot A then bytes from snapshot
+   B) and `gzip -t` fails with `invalid compressed data--format
+   violated`. Always pass `--header "If-Range: <ETag>"`, and prefer the
+   `*Backup*.tgz` URL, which is stable.
 
 5. **`checkblocks=0` in `pivx.conf` means "verify ALL blocks", not zero.**
    This wedges pivxd in startup for many hours after a snapshot install.
@@ -434,9 +433,9 @@ In rough order of "how long this cost us":
    `initialblockdownload`. Easy to miss when adapting Bitcoin-Core-flavored
    sync scripts.
 
-8. **Public BlockBook mirrors are not durable.** `blockbook.pivx.org`
-   disappeared on us mid-demo. Always have a fallback configured and
-   make `PIVX_EXPLORER_URL` overridable at deploy time.
+8. **Public BlockBook mirrors are not durable.** One went away on us
+   mid-demo. Always have a fallback configured, and keep
+   `PIVX_EXPLORER_URL` overridable at deploy time.
 
 9. **`docker compose restart` does not re-read `.env`.** It just restarts
    the existing container with its existing env. To pick up new env vars
@@ -489,4 +488,4 @@ AGENTS.md           # AI-agent integration guide
 
 # License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
