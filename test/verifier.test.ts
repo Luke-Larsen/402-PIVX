@@ -107,6 +107,20 @@ test("verifier: rejects missing OP_RETURN nonce", async () => {
   assert.equal(result.reason, "missing_nonce");
 });
 
+test("verifier: rejects a shield->transparent payment (no OP_RETURN possible)", async () => {
+  // PIVX's shieldsendmany has no way to attach an OP_RETURN, so a shield->D...
+  // payment looks like a normal transparent tx with just the payment vout.
+  // The verifier must reject it as missing_nonce, not silently accept.
+  const shieldOriginated: TxInfo = {
+    txid: "abc",
+    confirmations: 3,
+    outputs: [{ value: "0.01000000", address: PAY_TO, opReturnText: null }],
+  };
+  const v = new Verifier({ backend: backendReturning(shieldOriginated), nonceStore: new InMemoryNonceStore() });
+  const result = await v.verify(makeReq(), makeProof());
+  assert.equal(result.reason, "missing_nonce");
+});
+
 test("verifier: rejects nonce_replayed on second use", async () => {
   const store = new InMemoryNonceStore();
   const v = new Verifier({ backend: backendReturning(goodTx), nonceStore: store });

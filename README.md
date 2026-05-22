@@ -301,6 +301,151 @@ See [AGENTS.md](./AGENTS.md) for more on the agent integration story
 
 ---
 
+# C. Shielded payments (pivx-shield)
+
+Use this when on-chain observers should not see the amount, sender, recipient,
+or memo. The protocol envelope is unchanged from transparent; only the
+underlying tx and verification differ.
+
+## Server requirements
+
+Shielded verification *requires* `NodeRpcBackend`. An explorer cannot decrypt
+shielded outputs. The `pivxd` you point at must hold the **viewing key** for
+the receiving `ps1...` address — otherwise `viewshieldtransaction` will return
+no outputs and every payment will look like `wrong_recipient`.
+
+The simplest way: generate the receiving address on the same `pivxd` that
+verifies payments — the spending key (which you don't strictly need on the
+server) implies the viewing key.
+
+```bash
+# On the server's pivxd:
+pivx-cli getnewshieldaddress
+# -> ps1lxmel...xn3ckqgrne60fxl6f
+```
+
+In production you should generate the address once, export its viewing key
+(`exportsaplingviewingkey`), keep the spending key off the server, and import
+only the viewing key on the verifying node (`importsaplingviewingkey`).
+
+## 1. Configure the route
+
+```ts
+app.get(
+  "/cat",
+  pivx402({
+    backend: new NodeRpcBackend({
+      url: process.env.PIVX_RPC_URL!,        // http://127.0.0.1:51473
+      username: process.env.PIVX_RPC_USER,
+      password: process.env.PIVX_RPC_PASSWORD,
+    }),
+    network: "pivx-mainnet",
+    scheme: "pivx-shield",                    // <- the only change vs transparent
+    minConfirmations: 1,
+    price: {
+      amount: "0.0001",
+      payTo: "ps1...your shield address",    // <- ps1, not D
+      description: "private cat picture",
+    },
+  }),
+  (_req, res) => res.send(theThing),
+);
+```
+
+The cat demo (`demo/cat.ts`) already reads `SCHEME` and `PIVX_PAY_TO` from env,
+so you can start the same demo in shielded mode by setting both.
+
+## 2. Fund the client's shield pool
+
+Shielded to shield sends spend from the wallet's shielded balance, not its transparent
+balance. A fresh wallet has 0 shielded; you have to move PIV into the pool
+first.
+
+```bash
+# Generate a shield address you control (or reuse an existing one):
+SHIELD=$(pivx-cli getnewshieldaddress)
+
+# Move some transparent PIV into the shield pool. Use a few × the per-call
+# price so you can pay multiple times before topping up again (see fee note
+# below).
+pivx-cli shieldsendmany "from_transparent" \
+  "$(printf '[{"address":"%s","amount":0.1}]' "$SHIELD")" 1
+```
+
+Shielded transactions cost more **~0.01–0.014 PIV in fees**
+
+## 3. Pay the route
+
+`demo/pay-cli.ts` auto-routes to the shielded path when the requirement says
+`pivx-shield`. The only thing it needs from you is access to the same `pivxd`
+that holds the spending key for your shield address.
+
+```bash
+PIVX_BIN_DIR=/path/to/pivx-bin \
+PIVX_DATADIR=/path/to/.pivx \
+PIVX_NETWORK=mainnet \
+npx tsx demo/pay-cli.ts -v --out /tmp/cat.svg https://your-server/cat
+```
+
+By default it spends from any shielded note in the wallet
+(`shieldsendmany from_shield`). To spend straight from transparent (shielding
++ paying in one tx, no pool needed) set `PIVX_SHIELD_FROM=from_transparent`.
+That trades pool-management headache for a higher per-tx fee.
+
+## 4. How a shielded payment is verified
+
+The middleware does, on each retry:
+
+1. `viewshieldtransaction <txid>` — pivxd decrypts every shielded output it
+   has a viewing key for. The receiving `ps1...` address must be one of them,
+   or the tx looks empty.
+2. `getrawtransaction <txid> true` — fetch confirmations (the shield RPC
+   doesn't return them).
+3. Match an *incoming* output whose `address` equals `payTo` and whose memo
+   (`memoStr` or hex-decoded `memo`) equals the issued nonce.
+4. Sum incoming-to-payTo-with-nonce values; require `>= maxAmountRequired`.
+5. Burn the nonce in the `NonceStore`.
+
+`outgoing` outputs (e.g. shielded-change to ourselves) are ignored — only
+notes the receiver could not have produced count.
+
+## 5. Cross-scheme: which combinations actually work
+
+The endpoint's scheme determines what the `payTo` looks like and what proof is
+needed. The payer's *source* of funds (transparent UTXOs vs. shielded notes)
+is a separate decision, and not every combination is reachable in one tx:
+
+| Payer's source | Endpoint scheme    | One tx? | How                                                          |
+| -------------- | ------------------ | :-----: | ------------------------------------------------------------ |
+| transparent    | `pivx-transparent` | ✓       | `pay-cli` default: `createrawtransaction` + OP_RETURN splice |
+| transparent    | `pivx-shield`      | ✓       | `pay-cli` with `PIVX_SHIELD_FROM=from_transparent`           |
+| shield         | `pivx-shield`      | ✓       | `pay-cli` default for shield scheme: `from_shield`           |
+| shield         | `pivx-transparent` | **✗**   | **Impossible in one tx — no OP_RETURN in Sapling sends.**    |
+
+The last row is the only one that doesn't work. PIVX's `shieldsendmany` (and `rawshieldsendmany`)
+accept only `{address, amount, memo}` outputs; the `memo` field only applies
+to shielded recipients, and there's no escape hatch to add an OP_RETURN
+output to a Sapling tx. So a shield→`D...` payment will broadcast fine but
+land with no nonce — the verifier returns
+`missing_nonce: OP_RETURN with nonce not found`, and a retry won't help.
+
+If your payer wallet only has shielded balance and the endpoint is
+transparent, you must de-shield first:
+
+```bash
+# Move enough to a transparent address you control, including budget for the
+# subsequent transparent fee.
+pivx-cli shieldsendmany "from_shield" \
+  '[{"address":"D<your own>", "amount":0.001}]' 1
+# Wait for confirmation, then pay normally with pay-cli.
+```
+
+`pay-cli` will print a warning if you set `PIVX_SHIELD_FROM` while paying a
+transparent endpoint and then ignore it (paying from your transparent UTXOs
+instead). Shielded funds for a transparent endpoint always need a 2-tx flow.
+
+---
+
 # API reference
 
 ### `pivx402(opts) → express.RequestHandler`
@@ -388,13 +533,10 @@ GET /resource
 
 ---
 
-# Gotchas we actually hit
-
-In rough order of "how long this cost us":
+# Some things to note
 
 1. **`createrawtransaction` in PIVX 5.x does NOT accept the `{"data": hex}`
-   shorthand for OP_RETURN.** Newer Bitcoin Core does; PIVX doesn't (yet).
-   You must build the tx with only the recipient output, `fundrawtransaction`
+   shorthand for OP_RETURN.** You must build the tx with only the recipient output, `fundrawtransaction`
    it, then splice the `OP_RETURN` in via `pivx-tx outscript=N:OP_RETURN '<nonce>'`,
    then sign. `demo/pay-cli.ts` shows the working pattern.
 
@@ -404,42 +546,21 @@ In rough order of "how long this cost us":
    `feeRate` to ~`0.0005 PIV/kB` to leave headroom for the ~40-byte
    OP_RETURN; the absolute fee is still negligible.
 
-3. **PIVX Core's debug-console UI strips double quotes from JSON args.**
-   Pasting `createrawtransaction [] {"D...":0.0001,...}` returns
-   `Error parsing JSON:{D...:0.0001,...}`. Workarounds, easiest first:
-     - Run from a shell: `pivx-cli createrawtransaction "[]" '{"...":0.0001}'`
-       (shell single-quotes preserve the inner doubles).
-     - In the GUI, escape the inner quotes: `createrawtransaction []
-       {\"D...\":0.0001}`. Works in current PIVX Core builds.
-
-4. **The "Latest" snapshot URL on `snapshot.rockdev.org` can rotate to a
-   new file mid-download.** If you use `curl -C -` to resume, you'll get
-   a Frankenstein file (bytes from snapshot A then bytes from snapshot
-   B) and `gzip -t` fails with `invalid compressed data--format
-   violated`. Always pass `--header "If-Range: <ETag>"`, and prefer the
-   `*Backup*.tgz` URL, which is stable.
-
-5. **`checkblocks=0` in `pivx.conf` means "verify ALL blocks", not zero.**
-   This wedges pivxd in startup for many hours after a snapshot install.
-   Use `checkblocks=1` (or just leave the default 288) for a trusted snapshot.
-
-6. **`pivxd` startup needs a generous `dbcache=` after a snapshot install.**
-   The default ~300 MB causes a sea of random reads against the block index;
-   `dbcache=4096` lets it fit in RAM and warm up in minutes instead of
-   hours.
-
-7. **PIVX's `getblockchaininfo` calls the IBD field
-   `initial_block_downloading`** (snake_case + plural), not Bitcoin Core's
-   `initialblockdownload`. Easy to miss when adapting Bitcoin-Core-flavored
-   sync scripts.
-
-8. **Public BlockBook mirrors are not durable.** One went away on us
+3. **Public BlockBook mirrors are not durable.** One went away on us
    mid-demo. Always have a fallback configured, and keep
    `PIVX_EXPLORER_URL` overridable at deploy time.
 
-9. **`docker compose restart` does not re-read `.env`.** It just restarts
-   the existing container with its existing env. To pick up new env vars
-   you need `docker compose up -d` (which recreates the container).
+4. **You cannot pay a transparent (`D...`) endpoint from shielded funds in
+    one tx.** PIVX's `shieldsendmany`/`rawshieldsendmany` accept only
+    `{address, amount, memo}` outputs, and `memo` is shielded-recipient-only
+    — there's no OP_RETURN escape hatch in a Sapling send. A shield→`D...`
+    tx will broadcast but carry no nonce; the verifier returns
+    `missing_nonce` and retries won't help. Fix: de-shield to your own
+    transparent address first (`shieldsendmany from_shield "D<self>" ...`),
+    wait one confirmation, then pay normally. See the source/scheme matrix
+    in the "Shielded payments" section. The reverse, transparent funds
+    paying a `ps1...` endpoint, is one-tx fine
+    (`PIVX_SHIELD_FROM=from_transparent`).
 
 ---
 

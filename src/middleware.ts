@@ -93,7 +93,21 @@ export function pivx402(opts: MiddlewareOptions): RequestHandler {
       description: price.description,
     };
 
-    const result = await verifier.verify(requirement, proof);
+    let result;
+    try {
+      result = await verifier.verify(requirement, proof);
+    } catch (err) {
+      // Backend RPC/explorer failures shouldn't crash the process. Surface as
+      // a retryable 402 so the client (e.g. pay-cli) treats it like an upstream
+      // hiccup and reissues the proof. Don't leak the error string to the wire.
+      // eslint-disable-next-line no-console
+      console.error("[pivx402] backend error during verify:", err);
+      return sendPaymentRequired(
+        res,
+        { ...requirement, nonce: randomNonce() },
+        "tx_not_found: backend temporarily unavailable",
+      );
+    }
     if (!result.ok) {
       return sendPaymentRequired(
         res,

@@ -29,20 +29,23 @@ interface GetRawTransactionResult {
 }
 
 /**
- * Shape returned by pivxd's `viewshieldedtransaction` RPC. Fields are
- * decoded using the viewing keys present in the node's wallet, so only
- * outputs the node can "see" appear here.
+ * Shape returned by pivxd's `viewshieldtransaction` RPC. Fields are decoded
+ * using the viewing keys present in the node's wallet, so only outputs the
+ * node can "see" appear here. Note: the method is `viewshieldtransaction`
+ * (without "ed") and the field is `outputs` (not `shielded_outputs`) — this
+ * differs from older Zcash RPC names.
+ *
+ * The RPC does NOT return `confirmations`; we fetch that via getrawtransaction.
  */
-interface ViewShieldedTransactionResult {
+interface ViewShieldTransactionResult {
   txid: string;
-  confirmations?: number;
-  shielded_outputs?: Array<{
+  outputs?: Array<{
     address: string;
     value?: number;
     valueSat?: number;
     /** Hex-encoded memo bytes (PIVX/Zcash convention). */
     memo?: string;
-    /** Or memoStr — some node versions decode it server-side. */
+    /** Only present when memo bytes are valid UTF-8. */
     memoStr?: string;
     outgoing?: boolean;
   }>;
@@ -90,17 +93,31 @@ export class NodeRpcBackend implements PivxBackend {
   }
 
   async viewShieldedTransaction(txid: string): Promise<ShieldedTxInfo | null> {
-    let raw: ViewShieldedTransactionResult | null;
+    let raw: ViewShieldTransactionResult | null;
     try {
-      raw = await this.call<ViewShieldedTransactionResult>("viewshieldedtransaction", [txid]);
+      raw = await this.call<ViewShieldTransactionResult>("viewshieldtransaction", [txid]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/No such mempool|No information available|-5/i.test(msg)) return null;
+      // -5: not in wallet (no viewing key for any output). Treat as "not visible".
+      // -1: txid not found. Either way the verifier should see "tx_not_found".
+      if (/No such mempool|No information available|-5|-1/i.test(msg)) return null;
       throw err;
     }
     if (!raw) return null;
 
-    const shieldedOutputs: ShieldedOutput[] = (raw.shielded_outputs ?? []).map((o) => ({
+    // viewshieldtransaction doesn't return confirmations; getrawtransaction does
+    // and works for any chain tx (no wallet required).
+    let confirmations = 0;
+    try {
+      const chain = await this.call<GetRawTransactionResult>("getrawtransaction", [txid, true]);
+      confirmations = chain?.confirmations ?? 0;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/No such mempool|No information available|-5/i.test(msg)) throw err;
+      // tx not yet on the chain or in mempool — treat as 0 confirmations.
+    }
+
+    const shieldedOutputs: ShieldedOutput[] = (raw.outputs ?? []).map((o) => ({
       address: o.address,
       value: typeof o.value === "number"
         ? o.value.toFixed(8)
@@ -113,7 +130,7 @@ export class NodeRpcBackend implements PivxBackend {
 
     return {
       txid: raw.txid,
-      confirmations: raw.confirmations ?? 0,
+      confirmations,
       shieldedOutputs,
     };
   }
